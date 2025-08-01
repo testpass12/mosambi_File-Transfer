@@ -1,72 +1,77 @@
-#include <bits/stdc++.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <dirent.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-void end(std::string e)
+#include "lib.h"
+
+class Client
 {
-    perror(e.c_str());
-    exit(0);
+    void handle(int s);
+
+public:
+    Client()
+    {
+        sockaddr_in addr;
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(8080);
+        int s = socket(AF_INET, SOCK_STREAM, 0);
+        if (s < 0)
+        {
+            perror("SOCKET ERROR");
+            exit(1);
+        }
+        std::cout << "SOCKET SUCCESS" << std::endl;
+        if (connect(s, (sockaddr *)&addr, sizeof(addr)) < 0)
+        {
+            perror("CONNECT ERROR");
+            exit(1);
+        }
+        std::cout << "CONNECT SUCCESS" << std::endl;
+        handle(s);
+    }
+};
+
+int main()
+{
+    Client *s = new Client();
+    delete (s);
+    return 0;
 }
-int main(int argc, char const *argv[])
+
+void Client::handle(int s)
 {
-    if (argc == 1)
+    req r;
+    r.code = 2;
+    strcpy(r.msg,"client");
+    send(s, &r, sizeof(r), 0);
+    if (r.code == 0)
     {
-        exit(1);
-    }
-    int ret;
-    int s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (s < 0)
-    {
-        end("Socket Error");
-    }
-    sockaddr_in addr;
-    addr.sin_addr.s_addr = inet_addr(argv[1]);
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(std::stoi(argv[2]));
-    ret = connect(s, (sockaddr *)&addr, sizeof(addr));
-    if (ret < 0)
-    {
-        end("Connect Error");
-    }
-        int input;
-        std::cin >> input;
-        write(s, &input, sizeof(int));
-        if (input == 1)
+        directory dir;
+        while (recv(s, &dir, sizeof(dir), 0) != 0)
         {
-            char buf[256];
-            read(s, &input, sizeof(int));
-            for (int i = 0; i < input; i++)
-            {
-                recv(s, buf, sizeof(buf), 0);
-                std::cout << buf;
-                bzero(buf, sizeof(buf));
-            }
-            
+            std::cout << dir.filename << "\t\t" << dir.filesize << std::endl;
+            bzero(dir.filename, sizeof(dir.filename));
         }
-        else if (input == 2)
+    }
+    else if(r.code == 1){
+        recv(s,&r,sizeof(r),0);
+        FILE *fp = fopen("Temp","wb");
+        unsigned char buf[1] = {'\0'};
+        while (recv(s, buf, sizeof(buf), 0) != 0)
         {
-            std::string file;
-            char buf[1];
-            std::cout << "Enter the file name:";
-            std::cin >> file;
-            write(s, file.c_str(), file.size());
-            std::cout << "Set the Filename for Save:";
-            std::cin >> file;
-            FILE *fp = fopen(file.c_str(), "w");
-            read(s, &input, sizeof(input));
-            for (int i = 0; i < input; i++)
-            {
-                read(s, buf, sizeof(buf));
-                fwrite(buf, sizeof(buf), 1, fp);
-            }
-            fclose(fp);
+            fwrite(buf,sizeof(unsigned char),1,fp);
         }
-        else if (input == 3)
-        {
-            std::cout << "Exited" << std::endl;
-            exit(0);
+        fclose(fp);
+        std::cout << r.size << std::endl;
+    }
+    else if(r.code == 2){
+        FILE *fp = fopen(r.msg,"rb");
+        if(fp == NULL){
+            close(s);
+            return;
         }
-    exit(0);
+        unsigned char buf[1] = {'\0'};
+        while(fread(buf,sizeof(unsigned char),1,fp)){
+            send(s,buf,sizeof(buf),0);
+        }
+        fclose(fp);
+    }
+    close(s);
 }
